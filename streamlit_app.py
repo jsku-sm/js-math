@@ -13,13 +13,6 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
-import plotly.graph_objects as go
-
-try:
-    from streamlit_plotly_events import plotly_events
-    PLOTLY_EVENTS_AVAILABLE = True
-except ImportError:
-    PLOTLY_EVENTS_AVAILABLE = False
 
 matplotlib.rcParams["axes.unicode_minus"] = False
 
@@ -125,34 +118,6 @@ def point_sliders(label, default, color, key):
 
 
 # ========================================================================
-# Plotly 헬퍼 (클릭으로 점을 찍을 수 있는 좌표평면 - STEP 1, 2 전용)
-# ========================================================================
-def plotly_base():
-    fig = go.Figure()
-    fig.update_xaxes(range=[-LIM, LIM], zeroline=True, zerolinewidth=2, zerolinecolor="#111827",
-                      gridcolor=GRID_GRAY, dtick=2, scaleanchor="y", scaleratio=1, showgrid=True)
-    fig.update_yaxes(range=[-LIM, LIM], zeroline=True, zerolinewidth=2, zerolinecolor="#111827",
-                      gridcolor=GRID_GRAY, dtick=2, showgrid=True)
-    fig.update_layout(width=520, height=520, margin=dict(l=10, r=10, t=20, b=10),
-                       plot_bgcolor="white", paper_bgcolor="white", showlegend=False)
-    return fig
-
-
-def add_point_trace(fig, x, y, label, color):
-    fig.add_trace(go.Scatter(
-        x=[x], y=[y], mode="markers+text",
-        marker=dict(size=15, color=color, line=dict(width=2, color="white")),
-        text=[f"{label}({x:g}, {y:g})"], textposition="top center",
-        textfont=dict(size=13, color=color), hoverinfo="skip"))
-
-
-def click_fallback_notice():
-    st.warning("⚠ 그래프 클릭 기능을 쓰려면 `requirements.txt`에 `plotly`와 "
-               "`streamlit-plotly-events` 를 추가한 뒤 앱을 재부팅해주세요. "
-               "지금은 왼쪽 입력창으로만 점을 지정할 수 있습니다.")
-
-
-# ========================================================================
 # STEP 1. x축 위, 두 점 사이의 거리
 # ========================================================================
 def _s1_reset():
@@ -160,7 +125,6 @@ def _s1_reset():
     st.session_state.s1_B_input = 0
     st.session_state.s1_A_confirmed = None
     st.session_state.s1_B_confirmed = None
-    st.session_state.s1_last_click = None
     st.session_state.s1_show_result = False
 
 
@@ -172,51 +136,18 @@ def _s1_apply():
 
 def stage1():
     stage_header(1, "x축 위, 두 점 사이의 거리",
-                 "x축 위의 두 점 A, B의 좌표를 입력하거나 그래프를 클릭해 점을 찍고, "
-                 "두 점 사이의 거리를 구하는 공식을 확인합니다.")
+                 "x축 위의 두 점 A, B의 좌표를 입력하고, 두 점 사이의 거리를 구하는 공식을 확인합니다.")
 
     st.session_state.setdefault("s1_A_input", 0)
     st.session_state.setdefault("s1_B_input", 0)
     st.session_state.setdefault("s1_A_confirmed", None)
     st.session_state.setdefault("s1_B_confirmed", None)
-    st.session_state.setdefault("s1_last_click", None)
     st.session_state.setdefault("s1_show_result", False)
 
     col1, col2 = st.columns([1, 1.3])
 
-    # 그래프 & 클릭 처리를 먼저 실행해야 입력창(위젯) 값과 충돌 없이 갱신됩니다.
-    with col2:
-        fig = plotly_base()
-        if st.session_state.s1_A_confirmed is not None:
-            add_point_trace(fig, st.session_state.s1_A_confirmed, 0, "A", POINT_A)
-        if st.session_state.s1_B_confirmed is not None:
-            add_point_trace(fig, st.session_state.s1_B_confirmed, 0, "B", POINT_B)
-
-        if PLOTLY_EVENTS_AVAILABLE:
-            clicked = plotly_events(fig, click_event=True, hover_event=False, select_event=False,
-                                     override_height=520, key="s1_plot")
-            if clicked:
-                cx = max(-LIM, min(LIM, int(round(clicked[0]["x"]))))
-                if cx != st.session_state.s1_last_click:
-                    st.session_state.s1_last_click = cx
-                    if st.session_state.s1_A_confirmed is None:
-                        st.session_state.s1_A_confirmed = cx
-                        st.session_state.s1_A_input = cx
-                    elif st.session_state.s1_B_confirmed is None:
-                        st.session_state.s1_B_confirmed = cx
-                        st.session_state.s1_B_input = cx
-                    else:
-                        st.session_state.s1_A_confirmed = cx
-                        st.session_state.s1_A_input = cx
-                        st.session_state.s1_B_confirmed = None
-                    st.session_state.s1_show_result = False
-                    st.rerun()
-        else:
-            st.plotly_chart(fig, use_container_width=False)
-            click_fallback_notice()
-
     with col1:
-        st.markdown("**① 직접 입력하기**")
+        st.markdown("**점 A, B의 x값 입력하기**")
         c1, c2 = st.columns(2)
         c1.number_input("점 A의 x값", -LIM, LIM, step=1, key="s1_A_input")
         c2.number_input("점 B의 x값", -LIM, LIM, step=1, key="s1_B_input")
@@ -226,27 +157,33 @@ def stage1():
         cb2.button("🔄 Reset", key="s1_reset_btn", use_container_width=True, on_click=_s1_reset)
 
         st.markdown("---")
-        st.markdown("**② 그래프를 클릭해서 점 찍기**")
-        st.caption("첫 번째 클릭 → A, 두 번째 클릭 → B")
+        ready = st.session_state.s1_A_confirmed is not None and st.session_state.s1_B_confirmed is not None
+        if st.button("📐 두 점 사이의 거리 계산", key="s1_calc", disabled=not ready, use_container_width=True):
+            st.session_state.s1_show_result = True
 
-    st.markdown("---")
-    ready = st.session_state.s1_A_confirmed is not None and st.session_state.s1_B_confirmed is not None
-    cbtn, _ = st.columns([1, 2])
-    if cbtn.button("📐 두 점 사이의 거리 계산", key="s1_calc", disabled=not ready, use_container_width=True):
-        st.session_state.s1_show_result = True
-
-    if ready and st.session_state.s1_show_result:
-        A, B = st.session_state.s1_A_confirmed, st.session_state.s1_B_confirmed
-        dist = abs(B - A)
-        st.markdown(f"""
+        if ready and st.session_state.s1_show_result:
+            A, B = st.session_state.s1_A_confirmed, st.session_state.s1_B_confirmed
+            dist = abs(B - A)
+            st.markdown(f"""
 <div class="result-box">
 두 점 A({A:g}, 0), B({B:g}, 0)은 모두 x축 위에 있으므로<br>
 거리 = |x<sub>B</sub> − x<sub>A</sub>| = |{B:g} − {A:g}| = <b>{dist:g}</b>
 </div>
 """, unsafe_allow_html=True)
-        think_box("두 점이 모두 x축 위에 있을 때는 y좌표가 둘 다 0이라서 계산에서 사라집니다. 만약 두 점이 y축 위에 있다면 거리는 어떻게 구할까요?")
-    elif not ready:
-        st.info("A, B 두 점을 모두 입력(적용 버튼 클릭)하거나 그래프를 클릭해 찍은 뒤 계산 버튼을 눌러주세요.")
+            think_box("두 점이 모두 x축 위에 있을 때는 y좌표가 둘 다 0이라서 계산에서 사라집니다. 만약 두 점이 y축 위에 있다면 거리는 어떻게 구할까요?")
+        elif not ready:
+            st.info("A, B 두 점의 x값을 입력하고 '입력값 적용' 버튼을 눌러주세요.")
+
+    with col2:
+        fig, ax = base_plot()
+        if st.session_state.s1_A_confirmed is not None:
+            draw_point(ax, st.session_state.s1_A_confirmed, 0, "A", POINT_A)
+        if st.session_state.s1_B_confirmed is not None:
+            draw_point(ax, st.session_state.s1_B_confirmed, 0, "B", POINT_B)
+        if st.session_state.s1_A_confirmed is not None and st.session_state.s1_B_confirmed is not None:
+            A, B = st.session_state.s1_A_confirmed, st.session_state.s1_B_confirmed
+            ax.plot([A, B], [0, 0], color="#111827", linewidth=2.6, zorder=4)
+        st.pyplot(fig)
 
 
 # ========================================================================
@@ -259,7 +196,6 @@ def _s2_reset():
     st.session_state.s2_By_input = 4
     st.session_state.s2_A_confirmed = None
     st.session_state.s2_B_confirmed = None
-    st.session_state.s2_last_click = None
     st.session_state.s2_show_result = False
 
 
@@ -271,7 +207,7 @@ def _s2_apply():
 
 def stage2():
     stage_header(2, "두 점 사이의 거리",
-                 "두 점 A, B의 좌표를 입력하거나 그래프를 클릭해 점을 찍고, "
+                 "두 점 A, B의 좌표를 입력하면 좌표평면에 점이 표시되고, "
                  "직각삼각형을 통해 두 점 사이의 거리를 구하는 공식을 확인합니다.")
 
     st.session_state.setdefault("s2_Ax_input", -4)
@@ -280,59 +216,17 @@ def stage2():
     st.session_state.setdefault("s2_By_input", 4)
     st.session_state.setdefault("s2_A_confirmed", None)
     st.session_state.setdefault("s2_B_confirmed", None)
-    st.session_state.setdefault("s2_last_click", None)
     st.session_state.setdefault("s2_show_result", False)
 
     col1, col2 = st.columns([1, 1.3])
 
-    with col2:
-        fig = plotly_base()
-        if st.session_state.s2_A_confirmed is not None:
-            add_point_trace(fig, *st.session_state.s2_A_confirmed, "A", POINT_A)
-        if st.session_state.s2_B_confirmed is not None:
-            add_point_trace(fig, *st.session_state.s2_B_confirmed, "B", POINT_B)
-        if st.session_state.s2_A_confirmed is not None and st.session_state.s2_B_confirmed is not None:
-            ax_, ay_ = st.session_state.s2_A_confirmed
-            bx_, by_ = st.session_state.s2_B_confirmed
-            fig.add_trace(go.Scatter(x=[ax_, bx_], y=[ay_, by_], mode="lines",
-                                      line=dict(color="#9CA3AF", width=2, dash="dot"), hoverinfo="skip"))
-            fig.add_trace(go.Scatter(x=[ax_, bx_], y=[ay_, ay_], mode="lines",
-                                      line=dict(color="#D1D5DB", width=1.5, dash="dash"), hoverinfo="skip"))
-            fig.add_trace(go.Scatter(x=[bx_, bx_], y=[ay_, by_], mode="lines",
-                                      line=dict(color="#D1D5DB", width=1.5, dash="dash"), hoverinfo="skip"))
-
-        if PLOTLY_EVENTS_AVAILABLE:
-            clicked = plotly_events(fig, click_event=True, hover_event=False, select_event=False,
-                                     override_height=520, key="s2_plot")
-            if clicked:
-                cx = max(-LIM, min(LIM, int(round(clicked[0]["x"]))))
-                cy = max(-LIM, min(LIM, int(round(clicked[0]["y"]))))
-                click_id = (cx, cy)
-                if click_id != st.session_state.s2_last_click:
-                    st.session_state.s2_last_click = click_id
-                    if st.session_state.s2_A_confirmed is None:
-                        st.session_state.s2_A_confirmed = click_id
-                        st.session_state.s2_Ax_input, st.session_state.s2_Ay_input = cx, cy
-                    elif st.session_state.s2_B_confirmed is None:
-                        st.session_state.s2_B_confirmed = click_id
-                        st.session_state.s2_Bx_input, st.session_state.s2_By_input = cx, cy
-                    else:
-                        st.session_state.s2_A_confirmed = click_id
-                        st.session_state.s2_Ax_input, st.session_state.s2_Ay_input = cx, cy
-                        st.session_state.s2_B_confirmed = None
-                    st.session_state.s2_show_result = False
-                    st.rerun()
-        else:
-            st.plotly_chart(fig, use_container_width=False)
-            click_fallback_notice()
-
     with col1:
-        st.markdown("**① 직접 입력하기**")
-        st.markdown(f"점 A (<span style='color:{POINT_A}'>●</span>)", unsafe_allow_html=True)
+        st.markdown(f"**점 A** (색: <span style='color:{POINT_A}'>●</span>)", unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         c1.number_input("A의 x값", -LIM, LIM, step=1, key="s2_Ax_input")
         c2.number_input("A의 y값", -LIM, LIM, step=1, key="s2_Ay_input")
-        st.markdown(f"점 B (<span style='color:{POINT_B}'>●</span>)", unsafe_allow_html=True)
+
+        st.markdown(f"**점 B** (색: <span style='color:{POINT_B}'>●</span>)", unsafe_allow_html=True)
         c3, c4 = st.columns(2)
         c3.number_input("B의 x값", -LIM, LIM, step=1, key="s2_Bx_input")
         c4.number_input("B의 y값", -LIM, LIM, step=1, key="s2_By_input")
@@ -342,32 +236,42 @@ def stage2():
         cb2.button("🔄 Reset", key="s2_reset_btn", use_container_width=True, on_click=_s2_reset)
 
         st.markdown("---")
-        st.markdown("**② 그래프를 클릭해서 점 찍기**")
-        st.caption("첫 번째 클릭 → A, 두 번째 클릭 → B")
+        ready = st.session_state.s2_A_confirmed is not None and st.session_state.s2_B_confirmed is not None
+        if st.button("📐 두 점 사이의 거리 계산", key="s2_calc", disabled=not ready, use_container_width=True):
+            st.session_state.s2_show_result = True
 
-    st.markdown("---")
-    ready = st.session_state.s2_A_confirmed is not None and st.session_state.s2_B_confirmed is not None
-    cbtn, _ = st.columns([1, 2])
-    if cbtn.button("📐 두 점 사이의 거리 계산", key="s2_calc", disabled=not ready, use_container_width=True):
-        st.session_state.s2_show_result = True
-
-    if ready and st.session_state.s2_show_result:
-        ax_, ay_ = st.session_state.s2_A_confirmed
-        bx_, by_ = st.session_state.s2_B_confirmed
-        dx, dy = bx_ - ax_, by_ - ay_
-        dist = (dx**2 + dy**2) ** 0.5
-        c1, c2, c3 = st.columns(3)
-        c1.metric("가로 (dx)", f"{abs(dx):g}")
-        c2.metric("세로 (dy)", f"{abs(dy):g}")
-        c3.metric("거리", f"{dist:.2f}")
-        st.markdown(f"""
+        if ready and st.session_state.s2_show_result:
+            ax_, ay_ = st.session_state.s2_A_confirmed
+            bx_, by_ = st.session_state.s2_B_confirmed
+            dx, dy = bx_ - ax_, by_ - ay_
+            dist = (dx**2 + dy**2) ** 0.5
+            m1, m2, m3 = st.columns(3)
+            m1.metric("가로 (dx)", f"{abs(dx):g}")
+            m2.metric("세로 (dy)", f"{abs(dy):g}")
+            m3.metric("거리", f"{dist:.2f}")
+            st.markdown(f"""
 <div class="result-box">
 AB = √(dx² + dy²) = √(({bx_:g}−{ax_:g})² + ({by_:g}−{ay_:g})²) = √{dx**2 + dy**2:g} ≈ <b>{dist:.2f}</b>
 </div>
 """, unsafe_allow_html=True)
-        think_box("A와 B를 잇는 직각삼각형에서 빗변이 바로 '두 점 사이의 거리'입니다. 피타고라스 정리와 어떤 관계가 있을까요?")
-    elif not ready:
-        st.info("A, B 두 점을 모두 입력(적용 버튼 클릭)하거나 그래프를 클릭해 찍은 뒤 계산 버튼을 눌러주세요.")
+            think_box("A와 B를 잇는 직각삼각형에서 빗변이 바로 '두 점 사이의 거리'입니다. 피타고라스 정리와 어떤 관계가 있을까요?")
+        elif not ready:
+            st.info("A, B 두 점의 좌표를 입력하고 '입력값 적용' 버튼을 눌러주세요.")
+
+    with col2:
+        fig, ax = base_plot()
+        if st.session_state.s2_A_confirmed is not None:
+            draw_point(ax, *st.session_state.s2_A_confirmed, "A", POINT_A)
+        if st.session_state.s2_B_confirmed is not None:
+            draw_point(ax, *st.session_state.s2_B_confirmed, "B", POINT_B)
+        if st.session_state.s2_A_confirmed is not None and st.session_state.s2_B_confirmed is not None:
+            ax_, ay_ = st.session_state.s2_A_confirmed
+            bx_, by_ = st.session_state.s2_B_confirmed
+            ax.plot([ax_, bx_], [ay_, by_], color="#111827", linewidth=2.4, zorder=4)
+            ax.plot([ax_, bx_], [ay_, ay_], "--", color="#9CA3AF", linewidth=1.6)
+            ax.plot([bx_, bx_], [ay_, by_], "--", color="#9CA3AF", linewidth=1.6)
+        st.pyplot(fig)
+
 
 
 # ========================================================================
